@@ -1,0 +1,20 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Debug",
+      "type": "cppdbg",
+      "request": "launch",
+      //"preLaunchTask": "Compile",
+      "program": "~/class_2021/os/assignment/os161/root/kernel",
+      "cwd": "~/class_2021/os/assignment/os161/root",
+      "miDebuggerServerAddress": "unix:.sockets/gdb",
+      "miDebuggerPath": "/home/limdongyoung0/tools/os161/bin/mips-harvard-os161-gdb",
+      "launchCompleteCommand": "None",
+      "MIMode": "gdb",
+      "logging": {
+        "engineLogging": true
+      }
+    }
+  ]
+}
