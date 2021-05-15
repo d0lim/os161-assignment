@@ -41,9 +41,9 @@
 #define NSEMLOOPS     63
 #define NLOCKLOOPS    120
 #define NCVLOOPS      5
-#define NTHREADS      64
+#define NTHREADS      32
 
-void straight(int from);
+void straight(int num, int from);
 
 static volatile unsigned long testval1;
 static volatile unsigned long testval2;
@@ -62,7 +62,7 @@ void
 inititems(void)
 {
 	if (testsem==NULL) {
-		testsem = sem_create("testsem", 0);
+		testsem = sem_create("testsem", 1);
 		if (testsem == NULL) {
 			panic("synchtest: sem_create failed\n");
 		}
@@ -111,34 +111,42 @@ inititems(void)
 	}
 }
 
-void straight(int from) 
+void straight(int num, int from) 
 {
 	switch(from) {
 		case 0:
 			P(nw);
 			P(ne);
-			kprintf("From East\n");
+			P(testsem);
+			kprintf("Car %d is From East\n", num);
+			V(testsem);
 			V(nw);
 			V(ne);
 			break;
 		case 1:
 			P(sw);
 			P(se);
-			kprintf("From West\n");
+			P(testsem);
+			kprintf("Car %d is From West\n", num);
+			V(testsem);
 			V(sw);
 			V(se);
 			break;
 		case 2:
 			P(ne);
 			P(se);
-			kprintf("From South\n");
+			P(testsem);
+			kprintf("Car %d is From South\n", num);
+			V(testsem);
 			V(ne);
 			V(se);
 			break;
 		case 3:
 			P(nw);
 			P(sw);
-			kprintf("From North\n");
+			P(testsem);
+			kprintf("Car %d is From North\n", num);
+			V(testsem);
 			V(nw);
 			V(sw);
 			break;
@@ -159,14 +167,13 @@ semtestthread(void *junk, unsigned long num)
 	// 0: E, 1: W, 2: S, 3: N
 	int from = random() % 4;
 
-	
 
-	P(testsem);
-	kprintf("Thread %2lu: ", num);
+	
+	// kprintf("Thread %2lu: ", num);
 	// for (i=0; i<NSEMLOOPS; i++) {
 	// 	kprintf("%c", (int)num+64);
 	// }
-	straight(from);
+	straight(num, from);
 	// kprintf("\n");
 	V(donesem);
 }
@@ -195,7 +202,7 @@ semtest(int nargs, char **args)
 	}
 
 	for (i=0; i<NTHREADS; i++) {
-		V(testsem);
+		// V(testsem);
 		P(donesem);
 	}
 
