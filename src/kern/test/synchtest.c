@@ -44,10 +44,13 @@
 #define NTHREADS      32
 
 void straight(int num, int from);
+void message_function(int phase, int num, int from, int to);
+
 
 static volatile unsigned long testval1;
 static volatile unsigned long testval2;
 static volatile unsigned long testval3;
+static struct semaphore *printsem;
 static struct semaphore *testsem;
 static struct lock *testlock;
 static struct cv *testcv;
@@ -61,8 +64,14 @@ static
 void
 inititems(void)
 {
+	if (printsem==NULL) {
+		printsem = sem_create("printsem", 1);
+		if (printsem == NULL) {
+			panic("synchtest: sem_create failed\n");
+		}
+	}
 	if (testsem==NULL) {
-		testsem = sem_create("testsem", 1);
+		testsem = sem_create("testsem", 0);
 		if (testsem == NULL) {
 			panic("synchtest: sem_create failed\n");
 		}
@@ -111,47 +120,70 @@ inititems(void)
 	}
 }
 
+static const char *phases[] = {
+	"approaching",
+	"passing phase 1",
+	"passing phase 2",
+	"leaving"
+};
+
+static const char *directions[] = {
+	"east",
+	"west",
+	"south",
+	"north"
+};
+
+void message_function(int phase, int num, int from, int to) {
+	P(printsem);
+	kprintf("Car %d from %s to %s is %s!!\n", num, directions[from], directions[to], phases[phase]);
+	V(printsem);
+}
+
 void straight(int num, int from) 
 {
 	switch(from) {
 		case 0:
-			P(nw);
+			message_function(0, num, from, 1);
 			P(ne);
-			P(testsem);
-			kprintf("Car %d is From East\n", num);
-			V(testsem);
+			message_function(1, num, from, 1);
+			P(nw);
+			message_function(2, num, from, 1);
 			V(nw);
 			V(ne);
+			message_function(3, num, from, 1);
 			break;
 		case 1:
+			message_function(0, num, from, 0);
 			P(sw);
+			message_function(1, num, from, 0);
 			P(se);
-			P(testsem);
-			kprintf("Car %d is From West\n", num);
-			V(testsem);
-			V(sw);
+			message_function(2, num, from, 0);
 			V(se);
+			V(sw);
+			message_function(3, num, from, 0);
 			break;
 		case 2:
+			message_function(0, num, from, 3);
 			P(ne);
+			message_function(1, num, from, 3);
 			P(se);
-			P(testsem);
-			kprintf("Car %d is From South\n", num);
-			V(testsem);
+			message_function(2, num, from, 3);
 			V(ne);
 			V(se);
+			message_function(3, num, from, 3);
 			break;
 		case 3:
+			message_function(0, num, from, 2);
 			P(nw);
+			message_function(1, num, from, 2);
 			P(sw);
-			P(testsem);
-			kprintf("Car %d is From North\n", num);
-			V(testsem);
+			message_function(2, num, from, 2);
 			V(nw);
 			V(sw);
+			message_function(3, num, from, 2);
 			break;
 	}
-	
 }
 
 // 여기서 선언하는 쓰레드가, 행동을 정의
@@ -160,7 +192,7 @@ void
 semtestthread(void *junk, unsigned long num)
 {
 	(void)junk;
-
+	// P(testsem);
 	/*
 	 * Only one of these should print at a time.
 	 */
