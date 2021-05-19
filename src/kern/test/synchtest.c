@@ -50,8 +50,8 @@ void message_function(int phase, int num, int from, int to);
 static volatile unsigned long testval1;
 static volatile unsigned long testval2;
 static volatile unsigned long testval3;
+static struct semaphore *initsem;
 static struct semaphore *printsem;
-static struct semaphore *testsem;
 static struct lock *testlock;
 static struct cv *testcv;
 static struct semaphore *donesem;
@@ -59,20 +59,28 @@ static struct semaphore *nw;
 static struct semaphore *ne;
 static struct semaphore *sw;
 static struct semaphore *se;
+static struct semaphore *onsem;
+static unsigned int seq = 0;
 
 static
 void
 inititems(void)
 {
-	if (printsem==NULL) {
-		printsem = sem_create("printsem", 1);
-		if (printsem == NULL) {
+	if (initsem==NULL) {
+		initsem = sem_create("initsem", 0);
+		if (initsem == NULL) {
 			panic("synchtest: sem_create failed\n");
 		}
 	}
-	if (testsem==NULL) {
-		testsem = sem_create("testsem", 0);
-		if (testsem == NULL) {
+	if (onsem==NULL) {
+		onsem = sem_create("onsem", 0);
+		if (onsem == NULL) {
+			panic("synchtest: sem_create failed\n");
+		}
+	}
+	if (printsem==NULL) {
+		printsem = sem_create("printsem", 1);
+		if (printsem == NULL) {
 			panic("synchtest: sem_create failed\n");
 		}
 	}
@@ -95,25 +103,25 @@ inititems(void)
 		}
 	}
 	if (nw==NULL) {
-		nw = sem_create("nw", 1);
+		nw = sem_create("nw", 0);
 		if (nw == NULL) {
 			panic("synchtest: sem_create failed\n");
 		}
 	}
 	if (ne==NULL) {
-		ne = sem_create("ne", 1);
+		ne = sem_create("ne", 0);
 		if (ne == NULL) {
 			panic("synchtest: sem_create failed\n");
 		}
 	}
 	if (sw==NULL) {
-		sw = sem_create("sw", 1);
+		sw = sem_create("sw", 0);
 		if (sw == NULL) {
 			panic("synchtest: sem_create failed\n");
 		}
 	}
 	if (se==NULL) {
-		se = sem_create("se", 1);
+		se = sem_create("se", 0);
 		if (se == NULL) {
 			panic("synchtest: sem_create failed\n");
 		}
@@ -134,23 +142,39 @@ static const char *directions[] = {
 	"north"
 };
 
+
 void message_function(int phase, int num, int from, int to) {
+	if (phase == 0 || phase == 3) {
+		P(printsem);
+		kprintf("======= SEQ %d ======\n", seq);
+		kprintf("Car %d from %s to %s is %s!!\n", num, directions[from], directions[to], phases[phase]);
+		kprintf("=====================\n");
+		seq++;
+		V(printsem);
+		return;
+	}
 	P(printsem);
+	kprintf("======= SEQ %d ======\n", seq);
 	kprintf("Car %d from %s to %s is %s!!\n", num, directions[from], directions[to], phases[phase]);
+	kprintf("| %d | %d |\n", nw->sem_count, ne->sem_count);
+	kprintf("| %d | %d |\n", sw->sem_count, se->sem_count);
+	kprintf("=====================\n");
+	seq++;
 	V(printsem);
 }
 
 void straight(int num, int from) 
 {
+	P(onsem);
 	switch(from) {
 		case 0:
 			message_function(0, num, from, 1);
 			P(ne);
 			message_function(1, num, from, 1);
 			P(nw);
+			V(ne);
 			message_function(2, num, from, 1);
 			V(nw);
-			V(ne);
 			message_function(3, num, from, 1);
 			break;
 		case 1:
@@ -158,19 +182,19 @@ void straight(int num, int from)
 			P(sw);
 			message_function(1, num, from, 0);
 			P(se);
+			V(sw);
 			message_function(2, num, from, 0);
 			V(se);
-			V(sw);
 			message_function(3, num, from, 0);
 			break;
 		case 2:
 			message_function(0, num, from, 3);
-			P(ne);
-			message_function(1, num, from, 3);
 			P(se);
-			message_function(2, num, from, 3);
-			V(ne);
+			message_function(1, num, from, 3);
+			P(ne);
 			V(se);
+			message_function(2, num, from, 3);	
+			V(ne);
 			message_function(3, num, from, 3);
 			break;
 		case 3:
@@ -178,12 +202,13 @@ void straight(int num, int from)
 			P(nw);
 			message_function(1, num, from, 2);
 			P(sw);
-			message_function(2, num, from, 2);
 			V(nw);
+			message_function(2, num, from, 2);
 			V(sw);
 			message_function(3, num, from, 2);
 			break;
 	}
+	V(onsem);
 }
 
 // 여기서 선언하는 쓰레드가, 행동을 정의
@@ -191,22 +216,17 @@ static
 void
 semtestthread(void *junk, unsigned long num)
 {
+
 	(void)junk;
-	// P(testsem);
+
 	/*
 	 * Only one of these should print at a time.
 	 */
 	// 0: E, 1: W, 2: S, 3: N
+
 	int from = random() % 4;
-
-
-	
-	// kprintf("Thread %2lu: ", num);
-	// for (i=0; i<NSEMLOOPS; i++) {
-	// 	kprintf("%c", (int)num+64);
-	// }
+	V(initsem);
 	straight(num, from);
-	// kprintf("\n");
 	V(donesem);
 }
 
@@ -232,14 +252,25 @@ semtest(int nargs, char **args)
 			      strerror(result));
 		}
 	}
+	
+	for (i=0; i<NTHREADS; i++) {
+		P(initsem);
+	}
+
+	V(onsem);
+	V(onsem);
+	V(onsem);
+
+	V(nw);
+	V(ne);
+	V(sw);
+	V(se);
 
 	for (i=0; i<NTHREADS; i++) {
-		// V(testsem);
 		P(donesem);
 	}
 
 	/* so we can run it again */
-
 
 	kprintf("Semaphore test done.\n");
 	return 0;
